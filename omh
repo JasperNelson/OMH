@@ -1,0 +1,266 @@
+#!/bin/zsh
+#omh script Note: omh stands for oh my zsh helper 
+#filter user input -options
+inp=("$@") 
+inp=${inp:#'-'*} #filtered version of "$@" (flags)
+
+#used instead of sourcing .zshrc 
+temp=$(grep "^plugins=(" "${ZDOTDIR:-"$HOME"}/.zshrc")
+#will give us a value called "plugins" as specified in omz's zshrc config
+eval $temp 
+#values to replace old ones.
+tmptheme=""; tmpplug=("${plugins[@]}");
+
+#vars for profile parse
+declare -A current_profile
+
+ddir=($ZSH/plugins/*(N.)) #array of all the plugin files omz handles also used in the hard-coded ALL variable
+
+#values used for getopts
+lis=0; define=0; theme=0; add=0; help=0; remove=0; set=0; profile=0; file=0;
+
+
+
+
+
+
+
+#sets current setup to the settings in profile
+function profile_set(){
+    #if currentprofile is set 
+    if [[ -n ${current_profile["plug"]+_} ]]; then
+        #sets tmpplug to current_profile with the () stripped and removed
+        tmpplug=(${current_profile["plug"]:1:-1})
+        write_plug
+    fi
+    if [[ -n ${current_profile["theme"]+_} ]]; then
+        tmptheme="${current_profile["theme"]}"
+        write_theme
+    fi
+
+}
+
+
+# will retrieve the necessary profile information 
+# with the name of the plugin provided by the user. 
+function profile_parse(){
+    #NOTE -> FORMAT: profilename_type=var
+    #temporary array to hold the value of the expansion
+    tmp=( )
+    #expands all the matching profiles to input into an array of each line
+    tmp=("${(@f)$(grep -n "^${inp[1]}_" "${XDG_CONFIG_HOME:-"$HOME/.config"}/omh/helper")}")
+    for x izn "${tmp[@]}"; do 2
+        #returns the substring containing the TYPE of the entry
+        type="${${x##*_}%%=*}"
+        #assignes values to the dictionary current_profile containing the plugins and/or theme 
+        #where key->type and value->var
+        case $type in 
+        theme) current_profile["theme"]="${x##*=}" 
+               current_profile["themeLineNum"]="${x[1]}" ;;
+        plug) current_profile["plug"]="${x##*=}" #still a string
+              current_profile["plugLineNum"]="${x[1]}"
+            current_profile["plug"]=${(s: :)current_profile["plug"]} ;; # turned into an array
+        *) 
+        echo -e "\e[32m ERROR: it appears that your config/profile file is malformed and contains\e[0m" >&2
+        echo -e "\e[32m an invalid type in context of profilename_type=var" >&2
+        echo -e "\e[32m Valid types are theme OR plugin\e[0m" >&2
+        exit 1
+        ;;
+        esac
+
+    done
+}
+
+
+#Checks inputs for if a profile already exists or one needs to be actually created
+function profile_create(){
+#underscore/invalid char checker
+#also note in zsh arrays start at 1 not 0 as in bash or sh
+
+#check for invalid profilename
+if [[ "${inp[1]}" -eq *[_[:space:]='"'\\]* ]]; then
+ echo -e "\e[32mERROR: your profile name contained one or more invalid characters\e[0m"
+ exit 1
+fi 
+`
+#check for invalid type
+if [[ "${inp[2]}" != "theme" ]] && [[ "${inp[2]}" != "plugin" ]]; then
+ echo -e "\e[32mERROR: The supplied TYPE is INVALID, supported types are theme or plugin \e[0m"
+ exit 1
+fi
+
+#managing the saving of profiles.
+profile_parse
+if [[     ]]
+
+ 
+}
+
+
+#writes the theme to the zshrc file 
+function write_theme(){
+    sed -i "/^ZSH_THEME=/c\ZSH_THEME=${tmptheme}" "${ZDOTDIR:-"$HOME"}/.zshrc"
+}
+
+#rewrites the plugins array in zshrc. 
+function write_plug(){
+    sed -i "/^plugins=/c\plugins=\(${tmpplug[@]})" "${ZDOTDIR:-"$HOME"}/.zshrc"
+}
+
+#collection of all the info that could be asked to list
+function listv(){
+    if [[ $1 -eq 0 ]]; then 
+        echo "plugins=(${tmpplug[*]})" #active-plugins
+        echo "theme=(${ZSH_THEME})" #current theme
+        echo "profiles:" #profiles
+        tail -n +2 "${XDG_CONFIG_HOME:-"$HOME/.config"}/omh/helper"
+    elif [[ $1 -eq 1 ]]; then
+        echo "before:"
+        echo "'theme'=(${ZSH_THEME})"
+        echo "after:"
+        echo "'theme'=(${tmptheme})"
+    elif [[ $1 -eq 2 ]]; then
+            echo "profile ${inp[1]} theme:"
+            echo "${current_profile[theme]}"
+            echo "profile ${inp[1]} plugins"
+            echo "${current_profile[plugins]}"
+    else #list/w -a 
+        echo "before:"
+        echo "'plugins'=(${plugins[*]})"
+        echo "after:"
+        echo "'plugins'=(${tmpplug[*]})"
+    fi
+}
+
+#checks if there was input supplied with the flag
+function empty_input_check(){
+if [ ${#inp[@]} -eq 0 ]; then 
+ echo -e "\e[32mERROR: You need to provide some input\e[0m"
+ exit 1
+fi    
+}
+
+
+
+while getopts "hlDPratsf" opt; do
+    case $opt in
+        h) help=1 ;; # help flag 
+        l) lis=1 ;; #will list the action or everything depending on context  
+        r) remove=1 ;; #will remove plugins
+        a) add=1 ;; #will add plugins to ohmyzsh plugins var
+        s) set=1 ;; #will replace all plugins with ones supplied
+	    t) theme=1  ;; #will change the theme of the zsh configuration
+        P) profile=1 ;; #will change to profile mode to edit the profile
+        D) define=1 ;; #define mode lets you create or delete profiles and the types
+        f) file=1 ;; # will 
+        \?) echo "Invalid option: -$OPTARG" >&2
+            exit 1
+            ;;
+    esac
+done    
+
+
+
+#calculation of arguments
+#note list can be used in combination with any of the following options so it isnt part of the calculation
+if [[ $(( add + theme + help + remove + set + define )) -ge 2 ]] || [[ $(( profile + define + help )) -ge 2 ]]; then 
+ echo -e "\e[32mERROR: invalid combination of options/flags\e[0m" >&2 #colored error message
+ exit 1
+
+
+elif [[ $help -eq 1 ]]; then 
+cat << 'EOF'
+OMH HELP GUIDE: 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+omh or oh-my-helper is a program that will dynamically switch the currently enabled plugins managed by oh-my-zsh,
+change the theme, as well as providing a method of storing sets of plugins in "profiles". >> Theoretically 
+this should all be accomplished without changing or modifying environment variables.
+
+Valid flags for this program are as follows:
+
+ACTIONS:
+
+MODES:
+Default/Modeless: The Default option, or modeless mode will directly edit the zshrc file
+    -r remove: will remove specified plugins instead of adding them
+    -t theme: will change the theme to the supplied value
+    -s set: will REPLACE the current plugins with the supplied ones
+    -a add: will add specified plugins to the plugins already contained in zshrc
+    -l list: will list everything considered "listable" (when by itself) or 
+       will list specific actions if combined with them
+    -f file: will overwrite the config with a pre-defined-user profile 
+    -h help: this page
+    
+    
+
+-D define: define mode will modify a profile itself, either adding or removing a feature.  
+    Valid options for define mode are: 
+    -r remove: will remove a portion of a profile as defined in the format: pluginName Type 
+        Note: Not Supplying a type will delete the entire profile
+    -a add: will add a portion of a profile as defined in the format pluginName Type 
+        Note: profile names cannot contain underscores
+    -l list: will list all the profiles
+
+-P profile: profile mode will modify the CONTENTS of a profile. 
+    Valid options for profile mode are:
+    -r remove: remove plugins from the list of plugins, not valid for themes
+    -a add: will add plugins to the list of plugins, not valid for themes
+    -s set: will replace the theme or plugins inside of the profile. 
+    Where Type = plugin or theme
+EOF
+
+
+elif [[ $define -eq 1 ]]; then
+    profile_parse
+    profile_set
+    if [[ $lis -eq 1 ]]; then
+        listv 1
+        listv 3
+    fi
+elif [[ $profile -eq 1 ]]; then
+
+
+
+
+#     profile_parse
+# elif [[ $theme -eq 1 ]]; then
+#     tmptheme=($inp) 
+#     if [[ $lis -eq 1 ]]; then
+#         listv 1
+#     fi
+#     write_theme
+
+elif [[ $remove -eq 1 ]]; then
+    #removes all of the applicable plugins
+    tmpplug=${inp:|tmpplug}
+    write_plug
+    if [[ $lis -eq 1 ]]; then
+        listv 3
+    fi
+    
+elif [[ $set -eq 1 ]]; then
+    #completely will reset plugins to the new ones suppied
+    tmpplug=("${inp[@]}") 
+    write_plug
+    if [[ $lis -eq 1 ]]; then
+        listv 3
+    fi
+    
+elif [[ $add -eq 1 ]]; then
+    #combine plugins 
+    tmpplug=(${inp[@]} ${tmpplug[@]})
+    tmpplug=(${(u)tmpplug}) #remove duplicates
+    write_plug
+    if [[ $lis -eq 1 ]]; then
+        listv 3
+    fi
+    
+elif [[ $lis -eq 1 ]]; then
+        #just lists 
+        listv 0
+else 
+    echo "error no arguments supplied" >&2
+    exit 1
+fi
+#executes zsh value again
+exec zsh
